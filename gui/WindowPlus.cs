@@ -1,6 +1,7 @@
 ﻿using System.Runtime.InteropServices;
-using System.Windows;
 using System.Windows.Interop;
+
+namespace System.Windows; 
 
 public class WindowPlus : Window
 {

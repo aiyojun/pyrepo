@@ -1,6 +1,6 @@
 netcore_desktop_path = r"C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App\9.0.3"
-netcore_webview_path = r"C:\Users\jun.dai\.nuget\packages\microsoft.web.webview2\1.0.3650.58\lib_manual\netcoreapp3.0"
-runtime_webview_path = r"C:\Users\jun.dai\.nuget\packages\microsoft.web.webview2\1.0.3650.58\runtimes\win-x64\native"
+netcore_webview_path = r"C:\Users\-\.nuget\packages\microsoft.web.webview2\1.0.3650.58\lib_manual\netcoreapp3.0"
+runtime_webview_path = r"C:\Users\-\.nuget\packages\microsoft.web.webview2\1.0.3650.58\runtimes\win-x64\native"
 import os
 current_project_path = os.path.dirname(__file__)
 import ctypes
@@ -17,9 +17,9 @@ clr.AddReference(os.path.join(netcore_desktop_path, "PresentationFramework.dll")
 clr.AddReference(os.path.join(netcore_desktop_path, "System.Windows.Presentation.dll"))
 clr.AddReference(os.path.join(netcore_webview_path, "Microsoft.Web.WebView2.Core.dll"))
 clr.AddReference(os.path.join(netcore_webview_path, "Microsoft.Web.WebView2.Wpf.dll"))
-clr.AddReference(os.path.join(current_project_path, "SharkSharp.dll"))
+clr.AddReference(os.path.join(current_project_path, "WindowPlus.dll"))
 from System import Uri, UriKind
-from System.Windows import Application, Window, Thickness, CornerRadius, HorizontalAlignment, VerticalAlignment, ResourceDictionary, WindowState, ResizeMode, WindowStyle, SystemParameters
+from System.Windows import Application, Window, Thickness, CornerRadius, HorizontalAlignment, VerticalAlignment, ResourceDictionary, WindowState, ResizeMode, WindowStyle, SystemParameters, WindowPlus
 from System.Windows.Shell import WindowChrome
 from System.Windows.Media import Brushes, SolidColorBrush, Color, VisualTreeHelper
 from System.Windows.Media.Imaging import BitmapImage
@@ -27,7 +27,6 @@ from System.Windows.Media.Effects import DropShadowEffect, BlurEffect, Rendering
 from System.Windows.Controls import Grid, Panel, UserControl, Button, Border, DockPanel
 from System.Windows.Interop import WindowInteropHelper
 from Microsoft.Web.WebView2.Wpf import WebView2
-from SharkSharp import WindowPlus
 
 
 def print_scope():
