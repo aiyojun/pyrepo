@@ -1,5 +1,6 @@
 # pyrepo
 
+- 2026.01.17 gui/wpf_starter.py python+wpf+webview2技术整合 
 - 2025.09.30 distro 分布式点对点通信
 - 2024.11.14 voxe 序列化反序列化工具
 - 2024.02.06 scrapy 爬虫,m3u8,puppeteer
