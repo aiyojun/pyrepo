@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>WindowPlus</title>
+    <style>
+        .window-icon { color: #888; width: 46px; height: 36px; display: flex; justify-content: center; align-items: center; background: rgba(0,0,0,0); }
+        .window-icon:hover { color: #fff; background: rgba(255,255,255,0.15); }
+        .window-icon-close:hover { background: #ff0030; }
+/*        .hover-window-icon-close:hover { background: #ff0030; }*/
+        /*body.mouse-outside .window-icon-close:hover { background: rgba(0,0,0,0) !important; }*/
+    </style>
+</head>
+<body>
+<div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #333; overflow: hidden;">
+    <div style="position: absolute; top: 0; left: 0; width: 100%; height: 36px; box-sizing: border-box;">
+        <div style="display: flex;">
+            <div style="height: 36px; line-height: 36px; flex-shrink: 0; box-sizing: border-box; padding: 0 10px; color: #eee; font-weight: bold; user-select: none;">
+                Deep Studio
+            </div>
+            <div style="width: 100%; background: #9599e233; app-region: drag;">
+                
+            </div>
+            <div style="flex-shrink: 0; display: flex;">
+                <div id="window-minimize-button" class="window-icon hover-window-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 2" width="24" height="2"
+                         stroke="currentColor"
+                         shape-rendering="crispEdges">
+                        <path d="M7,0.5L17,0.5z" stroke-width=".5"/>
+                    </svg>
+                </div>
+                <div id="window-maximize-button" class="window-icon hover-window-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 25" width="13" height="25"
+                         stroke="currentColor"
+                         fill="none" shape-rendering="crispEdges">
+                        <path d="M2,8L11,8L11,16.5L2,16.5z" stroke-width=".5"/>
+                    </svg>
+                </div>
+                <div id="window-restore-button" class="window-icon hover-window-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12" width="12" height="12"
+                         stroke="currentColor"
+                         fill="none" shape-rendering="crispEdges">
+                        <path d="M1,4L8,4L8,10L1,10zM4,4L4,1L10,1L10,8L8,8L8,4z" stroke-width=".5"/>
+                    </svg>
+                </div>
+                <div id="window-close-button" class="window-icon window-icon-close hover-window-icon-close">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" width="10" height="10"
+                         stroke="currentColor"
+                         fill="none" shape-rendering="crispEdges">
+                        <path d="M-0.25,-0.25L9.75,9.75M9.75,-0.25L-0.25,9.75" stroke-width="0.5"/>
+                    </svg>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div id="main" style="position: absolute; top: 36px; left: 0; right: 0; bottom: 0; overflow: auto;">
+
+    </div>
+</div>
+<script type="text/javascript">
+    const utf8decoder = new TextDecoder('utf8')
+    const utf8encoder = new TextEncoder()
+
+    class Future {
+        promise = null
+        resolve = null
+        reject = null
+        done = false
+        result = null
+        error = null
+
+        constructor() {
+            const self = this
+            self.promise = new Promise((resolve, reject) => {
+                self.resolve = resolve
+                self.reject = reject
+            })
+        }
+
+        set_exception(err) {
+            const self = this
+            if (!self.done) {
+                clearTimeout(self._tid)
+                self.error = err
+                if (self.reject) {
+                    self.reject(err)
+                }
+            }
+        }
+
+        set_result(rs) {
+            const self = this
+            self.result = rs
+            if (!self.done) {
+                clearTimeout(self._tid)
+                if (self.resolve) {
+                    self.resolve(rs)
+                }
+            }
+        }
+
+        _tid = null
+
+        wait_for(timeoutMs) {
+            const self = this
+            if (timeoutMs > 0) {
+                const p2 = new Promise((resolve, reject) => {
+                    self._tid = setTimeout(() => {
+                        if (!self.done) {
+                            reject(new Error("Timeout"))
+                            self.done = true
+                        } else {
+                            resolve(self.result)
+                        }
+                        self._tid = null
+                    }, timeoutMs)
+                })
+                return Promise.race([self.promise, p2])
+            } else {
+                return self.promise
+            }
+        }
+    }
+
+    class Transport {
+        // shared resource
+        rmemo = null
+        wmemo = null
+        chunk = 0
+        futures = new Map()
+        futures_ack = new Map()
+
+        constructor() {
+            const self = this
+            const webview = window.chrome.webview
+            webview.addEventListener("message", e => self.on_listen(e.data))
+            webview.addEventListener("sharedbufferreceived", e => {
+                if (e.additionalData && e.additionalData.type === "read") {
+                    self.rmemo = e.getBuffer();
+                } else {
+                    self.wmemo = e.getBuffer();
+                    self.chunk = self.wmemo.byteLength
+                }
+            })
+        }
+
+        // package
+        reqid = null
+        pkgid = null
+        total = 0
+        offset = 0
+        cache = null
+        cu8view = null
+
+        on_listen(data) {
+            try {
+                const self = this
+                const u8view = new Uint8Array(self.rmemo, 0, self.rmemo.byteLength)
+                data = JSON.parse(data)
+                if (!Object.hasOwn(data, "type")) return
+                const type = data["type"]
+                if (type === "ack") {
+                    const pkgid = data["pkgid"]
+                    if (self.futures_ack.has(pkgid))
+                        self.futures_ack.get(pkgid).set_result(1)
+                    return
+                }
+                if (type !== "req") return
+                self.pkgid = data["pkgid"]
+                if (self.reqid === null || self.reqid !== data["reqid"]) {
+                    self.reqid = data["reqid"]
+                    self.total = data["total"]
+                    self.cache = new ArrayBuffer(self.total)
+                    self.cu8view = new Uint8Array(self.cache)
+                    self.offset = 0
+                }
+                const size = data["size"]
+                self.cu8view.set(size === this.chunk ? u8view : u8view.slice(0, size), self.offset)
+                self.offset += size
+                window.chrome.webview.postMessage(JSON.stringify({type: "ack", reqid: self.reqid, pkgid: self.pkgid}))
+                // if (self.offset >= self.total) {
+                //     console.info("[CACHE]", self.reqid, self.futures.has(self.reqid), new Uint8Array(self.cache))
+                // }
+                if (self.offset >= self.total && self.futures.has(self.reqid)) {
+                    self.futures.get(self.reqid).set_result(new Uint8Array(self.cache))
+                    self.reqid = null
+                    self.cache = null
+                    self.cu8view = null
+                }
+            } catch (e) {
+                console.error(e)
+            }
+        }
+
+        async send(bufferArray, reqid = null) {
+            if (!(bufferArray instanceof BufferArray))
+                throw new Error("Transport::send only support BufferArray")
+            const self = this
+            const chunk = self.wmemo.byteLength
+            const u8view = new Uint8Array(self.wmemo, 0, self.wmemo.byteLength)
+            if (reqid === null) reqid = uuid4().replace(/-/g, "")
+            const size = bufferArray.size
+            let pb = 0, pe = 0
+            while (pb < size) {
+                pe = pb + chunk
+                if (pe > size) {
+                    pe = size
+                }
+                const ack = new Future()
+                const pkgid = uuid4().replace(/-/g, "")
+                self.futures_ack.set(pkgid, ack)
+                u8view.set(bufferArray.slice(pb, pe), 0)
+                try {
+                    window.chrome.webview.postMessage(JSON.stringify({type: "req", reqid, pkgid, total: size, size: pe - pb}))
+                    await ack.wait_for(-1)
+                } catch (e) {
+                    console.error(e)
+                } finally {
+                    self.futures_ack.delete(pkgid)
+                }
+                pb = pe
+            }
+        }
+
+        async request(data, timeoutMs=-1) {
+            if (data instanceof ArrayBuffer)
+            {
+                const bufferArray = new BufferArray()
+                bufferArray.push(data)
+                data = bufferArray
+            }
+            const self = this
+            const reqid = uuid4().replace(/-/g, "")
+            const future = new Future()
+            self.futures.set(reqid, future)
+            await self.send(data, reqid)
+            try {
+                return await future.wait_for(timeoutMs)
+            } catch (e) {
+                throw e
+            } finally {
+                self.futures.delete(reqid)
+            }
+        }
+    }
+
+    class BufferArray {
+        array = []
+        size = 0
+        indices = []
+        clear() {
+            this.array = []
+            this.size = 0
+            this.indices = []
+            return this
+        }
+        push(bytes) {
+            if (!(bytes instanceof ArrayBuffer))
+                throw new Error("BufferArray::push only support ArrayBuffer")
+            this.array.push(bytes)
+            this.indices.push(this.size)
+            this.size += bytes.byteLength
+            return this
+        }
+        slice(begin, end) {
+            if (begin > this.size || begin >= end || end < 0)
+                return new Uint8Array(0);
+            if (begin < 0) begin = 0;
+            if (end > this.size) end = this.size;
+            const u8a = new Uint8Array(end - begin);
+            let offset = 0
+            let status = 0
+            for (let i = 0; i < this.indices.length; i++) {
+                const b = this.indices[i], e = i === this.indices.length - 1 ? this.size : this.indices[i + 1];
+                const buf = new Uint8Array(this.array[i])
+                if (begin >= b && begin < e) {
+                    if (end > b && end <= e) {
+                        u8a.set(buf.slice(begin - b, end - b), 0)
+                        break
+                    } else {
+                        const item = buf.slice(begin - b)
+                        u8a.set(item, 0)
+                        offset += item.byteLength
+                    }
+                    status = 1;
+                    continue
+                }
+                if (end > b && end <= e) {
+                    const item = buf.slice(0, end - b)
+                    u8a.set(item, offset)
+                    break
+                }
+                if (status === 1) {
+                    const item = buf
+                    u8a.set(item, offset)
+                    offset += item.byteLength
+                }
+            }
+            return u8a
+        }
+    }
+
+    class Voxe {
+        dumps(...args) {
+            const bytesArray = new BufferArray()
+            let buffer, u8view, rwview;
+            for (const arg of args) {
+                if (arg instanceof Uint8Array) {
+                    buffer = new ArrayBuffer(8 + arg.byteLength);
+                    u8view = new Uint8Array(buffer, 0, buffer.byteLength)
+                    rwview = new DataView(buffer);
+                    u8view.set([0, 9, 0])
+                    rwview.setUint32(3, args.byteLength)
+                    rwview.setUint8(7, 0)
+                    u8view.set(arg, 8)
+                } else if (typeof arg === 'string') {
+                    const str = utf8encoder.encode(arg)
+                    buffer = new ArrayBuffer(8 + str.byteLength);
+                    u8view = new Uint8Array(buffer, 0, buffer.byteLength)
+                    rwview = new DataView(buffer);
+                    u8view.set([0, 6, 0], 0)
+                    rwview.setUint32(3, str.byteLength)
+                    rwview.setUint8(7, 0)
+                    u8view.set(str, 8)
+                } else if (typeof arg === 'number' && `${arg}`.indexOf('.') > -1) {
+                    buffer = new ArrayBuffer(7);
+                    u8view = new Uint8Array(buffer, 0, buffer.byteLength)
+                    rwview = new DataView(buffer);
+                    u8view.set([0, 3, 0])
+                    rwview.setFloat32(3, arg)
+                } else if (typeof arg === 'number') {
+                    buffer = new ArrayBuffer(7);
+                    u8view = new Uint8Array(buffer, 0, buffer.byteLength)
+                    rwview = new DataView(buffer);
+                    u8view.set([0, 2, 0])
+                    rwview.setInt32(3, arg)
+                } else if (typeof arg === 'boolean') {
+                    buffer = new ArrayBuffer(4);
+                    u8view = new Uint8Array(buffer, 0, buffer.byteLength)
+                    u8view.set([0, 0, 0, arg ? 1 : 0])
+                } else if (arg === null) {
+                    buffer = new ArrayBuffer(3);
+                    u8view = new Uint8Array(buffer, 0, buffer.byteLength)
+                    u8view.set([0, 7, 0])
+                } else {
+                    throw new Error("voxe error")
+                }
+                bytesArray.push(buffer)
+            }
+            return bytesArray
+        }
+        loads(u8view) {
+            const buffer = u8view.buffer;
+            const rwview = new DataView(buffer);
+            let beginIndex = 0
+            const arr = []
+            while (beginIndex < u8view.length) {
+                if (u8view[beginIndex] !== 0) break
+                const datatype = u8view[beginIndex + 1]
+                if (datatype === 0) {
+                    arr.push(!!u8view[beginIndex + 3])
+                    beginIndex += 4
+                } else if (datatype === 7) {
+                    arr.push(null)
+                    beginIndex += 3
+                } else if (datatype === 2) {
+                    arr.push(rwview.getInt32(beginIndex + 3))
+                    beginIndex += 7
+                } else if (datatype === 3) {
+                    arr.push(rwview.getFloat32(beginIndex + 3))
+                    beginIndex += 7
+                } else if (datatype === 6) {
+                    const stringLength = rwview.getUint32(beginIndex + 3)
+                    const s = utf8decoder.decode(u8view.slice(beginIndex + 8, beginIndex + 8 + stringLength))
+                    arr.push(s)
+                    beginIndex += 8 + stringLength
+                } else if (datatype === 9) {
+                    const stringLength = rwview.getInt32(beginIndex + 3)
+                    const s = u8view.slice(beginIndex + 8, beginIndex + 8 + stringLength)
+                    arr.push(s)
+                    beginIndex += 8 + stringLength
+                } else {
+                    throw new Error("voxe error")
+                }
+            }
+            return arr
+        }
+    }
+
+    window.voxe = new Voxe()
+    window.transport = new Transport()
+
+    function uuid4() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
+    window.readimage = async (path) => {
+        console.info("readimage[0]", new Date().getTime())
+        const x = await window.transport.request(voxe.dumps("readfile", path))
+        const rt = voxe.loads(x)
+        console.info("readimage[1]", new Date().getTime())
+        if (rt[0] !== 0) {
+            console.error(rt[1])
+        }
+        if (rt[0] === 0) {
+            const u8a = rt[1]
+            // console.info("image :", path, "size :", u8a.byteLength)
+            const suffix = s => s.substring(s.lastIndexOf("."))
+            const blob = new Blob([u8a.buffer], {type: 'image/' + suffix(path)});
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                document.getElementById("main").innerHTML = ''
+                document.getElementById("main").appendChild(canvas)
+                URL.revokeObjectURL(img.src)
+                console.info("readimage[2]", new Date().getTime())
+            };
+            img.src = URL.createObjectURL(blob);
+        }
+    }
+
+    function main() {
+        const buttonClose = document.getElementById("window-close-button");
+        buttonClose.addEventListener("click", () => transport.request(voxe.dumps("close")))
+        const buttonMaximize = document.getElementById("window-maximize-button");
+        buttonMaximize.addEventListener("click", () => transport.request(voxe.dumps("maximize")))
+        const buttonRestore = document.getElementById("window-restore-button");
+        buttonRestore.addEventListener("click", () => transport.request(voxe.dumps("restore")))
+        buttonRestore.style.display = "none"
+        const buttonMinimize = document.getElementById("window-minimize-button");
+        buttonMinimize.addEventListener("click", () => transport.request(voxe.dumps("minimize")))
+        window.addEventListener('NativeWindowResize', e => {
+            const windowState = e.detail["WindowState"]
+            if (windowState === "MINIMIZED") {
+            } else if (windowState === "MAXIMIZED") {
+                buttonRestore.style.display = "flex"
+                buttonMaximize.style.display = "none"
+            } else if (windowState === "NORMAL") {
+                buttonRestore.style.display = "none"
+                buttonMaximize.style.display = "flex"
+            }
+        })
+
+    }
+
+    main()
+</script>
+</body>
+</html>
