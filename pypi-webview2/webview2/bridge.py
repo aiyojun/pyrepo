@@ -78,19 +78,19 @@ class Transport:
                     if type(self.scopes) is dict:
                         if method_name in self.scopes:
                             r = self.scopes[method_name](*args)
-                            asyncio.create_task(self.post_packet(voxe.dumps(0, r), self.reqid))
+                            asyncio.create_task(self.send(voxe.dumps(0, r), self.reqid))
                         else:
-                            asyncio.create_task(self.post_packet(voxe.dumps(1, "no such method"), self.reqid))
+                            asyncio.create_task(self.send(voxe.dumps(1, "no such method"), self.reqid))
                     else:
                         if method_name in dir(self.scopes):
                             method = getattr(self.scopes, method_name)
                             r = method(*args)
-                            asyncio.create_task(self.post_packet(voxe.dumps(0, r), self.reqid))
+                            asyncio.create_task(self.send(voxe.dumps(0, r), self.reqid))
                         else:
-                            asyncio.create_task(self.post_packet(voxe.dumps(1, "no such method"), self.reqid))
+                            asyncio.create_task(self.send(voxe.dumps(1, "no such method"), self.reqid))
                 except Exception as e:
                     traceback.print_exc()
-                    asyncio.create_task(self.post_packet(voxe.dumps(1, str(e)), self.reqid))
+                    asyncio.create_task(self.send(voxe.dumps(1, str(e)), self.reqid))
                     pass
                 if self.on_service:
                     self.on_service(self.cache)
@@ -103,7 +103,7 @@ class Transport:
         except Exception as e:
             traceback.print_exc()
 
-    async def post_packet(self, data: bytes, reqid=None):
+    async def send(self, data: bytes, reqid=None):
         if reqid is None:
             reqid = str(uuid.uuid4()).replace("-", "")
         size = len(data)
@@ -130,7 +130,7 @@ class Transport:
         reqid = str(uuid.uuid4()).replace("-", "")
         future = asyncio.Future()
         self.futures[reqid] = future
-        await self.post_packet(data, reqid)
+        await self.send(data, reqid)
         r = await asyncio.wait_for(future, timeout=timeout)
         del self.futures[reqid]
         return r
