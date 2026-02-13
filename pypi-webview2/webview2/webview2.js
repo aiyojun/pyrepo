@@ -1,68 +1,20 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>WindowPlus</title>
-    <style>
-        .window-icon { color: #888; width: 46px; height: 36px; display: flex; justify-content: center; align-items: center; background: rgba(0,0,0,0); }
-        .window-icon:hover { color: #fff; background: rgba(255,255,255,0.15); }
-        .window-icon-close:hover { background: #ff0030; }
-/*        .hover-window-icon-close:hover { background: #ff0030; }*/
-        /*body.mouse-outside .window-icon-close:hover { background: rgba(0,0,0,0) !important; }*/
-    </style>
-</head>
-<body>
-<div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #333; overflow: hidden;">
-    <div style="position: absolute; top: 0; left: 0; width: 100%; height: 36px; box-sizing: border-box;">
-        <div style="display: flex;">
-            <div style="height: 36px; line-height: 36px; flex-shrink: 0; box-sizing: border-box; padding: 0 10px; color: #eee; font-weight: bold; user-select: none;">
-                Deep Studio
-            </div>
-            <div style="width: 100%; background: #9599e233; app-region: drag;">
-                
-            </div>
-            <div style="flex-shrink: 0; display: flex;">
-                <div id="window-minimize-button" class="window-icon hover-window-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 2" width="24" height="2"
-                         stroke="currentColor"
-                         shape-rendering="crispEdges">
-                        <path d="M7,0.5L17,0.5z" stroke-width=".5"/>
-                    </svg>
-                </div>
-                <div id="window-maximize-button" class="window-icon hover-window-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 25" width="13" height="25"
-                         stroke="currentColor"
-                         fill="none" shape-rendering="crispEdges">
-                        <path d="M2,8L11,8L11,16.5L2,16.5z" stroke-width=".5"/>
-                    </svg>
-                </div>
-                <div id="window-restore-button" class="window-icon hover-window-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12" width="12" height="12"
-                         stroke="currentColor"
-                         fill="none" shape-rendering="crispEdges">
-                        <path d="M1,4L8,4L8,10L1,10zM4,4L4,1L10,1L10,8L8,8L8,4z" stroke-width=".5"/>
-                    </svg>
-                </div>
-                <div id="window-close-button" class="window-icon window-icon-close hover-window-icon-close">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" width="10" height="10"
-                         stroke="currentColor"
-                         fill="none" shape-rendering="crispEdges">
-                        <path d="M-0.25,-0.25L9.75,9.75M9.75,-0.25L-0.25,9.75" stroke-width="0.5"/>
-                    </svg>
-                </div>
-            </div>
-
-        </div>
-    </div>
-
-    <div id="main" style="position: absolute; top: 36px; left: 0; right: 0; bottom: 0; overflow: auto;">
-
-    </div>
-</div>
-<script type="text/javascript">
+((() => {
     const utf8decoder = new TextDecoder('utf8')
     const utf8encoder = new TextEncoder()
+    const uuid4 = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+
+    const invoke = async (transport, voxe, method, ...args) => {
+        const rt = voxe.loads(await transport.request(voxe.dumps(method, ...args)))
+        if (rt[0] !== 0)
+            throw new Error(rt[1])
+        if (rt.length > 2)
+            console.warn(`Webview2 remote call expects 1 result, ${rt.length - 1} received`)
+        return rt[1]
+    }
 
     class Future {
         promise = null
@@ -389,72 +341,4 @@
             return arr
         }
     }
-
-    window.voxe = new Voxe()
-    window.transport = new Transport()
-
-    function uuid4() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-            const r = Math.random() * 16 | 0;
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
-    }
-
-    window.readimage = async (path) => {
-        console.info("readimage[0]", new Date().getTime())
-        const x = await window.transport.request(voxe.dumps("readfile", path))
-        const rt = voxe.loads(x)
-        console.info("readimage[1]", new Date().getTime())
-        if (rt[0] !== 0) {
-            console.error(rt[1])
-        }
-        if (rt[0] === 0) {
-            const u8a = rt[1]
-            // console.info("image :", path, "size :", u8a.byteLength)
-            const suffix = s => s.substring(s.lastIndexOf("."))
-            const blob = new Blob([u8a.buffer], {type: 'image/' + suffix(path)});
-            const img = new Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-                document.getElementById("main").innerHTML = ''
-                document.getElementById("main").appendChild(canvas)
-                URL.revokeObjectURL(img.src)
-                console.info("readimage[2]", new Date().getTime())
-            };
-            img.src = URL.createObjectURL(blob);
-        }
-    }
-
-    function main() {
-        const buttonClose = document.getElementById("window-close-button");
-        buttonClose.addEventListener("click", () => transport.request(voxe.dumps("close")))
-        const buttonMaximize = document.getElementById("window-maximize-button");
-        buttonMaximize.addEventListener("click", () => transport.request(voxe.dumps("maximize")))
-        const buttonRestore = document.getElementById("window-restore-button");
-        buttonRestore.addEventListener("click", () => transport.request(voxe.dumps("restore")))
-        buttonRestore.style.display = "none"
-        const buttonMinimize = document.getElementById("window-minimize-button");
-        buttonMinimize.addEventListener("click", () => transport.request(voxe.dumps("minimize")))
-        window.addEventListener('NativeWindowResize', e => {
-            const windowState = e.detail["WindowState"]
-            if (windowState === "MINIMIZED") {
-            } else if (windowState === "MAXIMIZED") {
-                buttonRestore.style.display = "flex"
-                buttonMaximize.style.display = "none"
-            } else if (windowState === "NORMAL") {
-                buttonRestore.style.display = "none"
-                buttonMaximize.style.display = "flex"
-            }
-        })
-
-    }
-
-    main()
-</script>
-</body>
-</html>
+})())
