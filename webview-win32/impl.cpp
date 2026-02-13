@@ -295,21 +295,24 @@ void InitWebView2(HWND hwnd)
                             //printf("- webview status : %d\n", FAILED(hr));
                             if (FAILED(hr)) return hr;
 
-                            ComPtr<ICoreWebView2Controller4> g_controller4;
+                            ComPtr<ICoreWebView2Controller4> controller4;
+                            ComPtr<ICoreWebView2Controller4> controller2;
                             ComPtr<ICoreWebView2Settings> settings;
                             
                             /*g_controller = controller;
                             g_controller.As(&g_compController);
-                            g_controller.As(&g_controller4);*/
+                            g_controller.As(&controller4);*/
                             g_compController = controller;
                             g_compController.As(&g_controller);
-                            g_controller.As(&g_controller4);
+                            g_controller.As(&controller4);
+                            g_controller.As(&controller2);
                             g_controller->get_CoreWebView2(&g_webview);
                             g_webview->get_Settings(&settings);
 
                             WebView2DropTarget* dropTarget = new WebView2DropTarget(hwnd, g_compController);
 
-                            g_controller4->put_AllowExternalDrop(true);
+                            controller2->put_DefaultBackgroundColor({ 0, 0, 0, 0 });
+                            controller4->put_AllowExternalDrop(true);
                             g_controller->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
                             g_compController->put_RootVisualTarget(g_visual.Get());
                             g_controller->put_ZoomFactor(1);
@@ -449,7 +452,7 @@ void build()
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hInstance;
     wc.lpszClassName = L"WebView2Compositor";
-    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wc.hbrBackground = CreateSolidBrush(RGB(50,50,50));//(HBRUSH)(COLOR_WINDOW + 1);
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     if (!g_params.icon.empty())
     wc.hIcon = (HICON)LoadImage(nullptr, g_params.icon.c_str(), IMAGE_ICON, 32, 32, LR_LOADFROMFILE | LR_DEFAULTCOLOR);
@@ -478,6 +481,9 @@ void build()
     Trap(g_device->CreateVisual(&g_visual));
     Trap(g_target->SetRoot(g_visual.Get()));
     //Trap(g_device->Commit());
+
+    //BOOL enable = TRUE;
+    //DwmSetWindowAttribute(g_hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &enable, sizeof(enable));
 
     //g_params.url = L"http://172.16.1.166:8081";
 
@@ -539,6 +545,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     {
         SeachCaption();
     }
+    //if (msg == WM_ERASEBKGND)
+    //{
+    //    HDC hdc = (HDC)wParam;
+    //    RECT rc;
+    //    GetClientRect(hwnd, &rc);
+    //    HBRUSH hBrush = CreateSolidBrush(RGB(50,50,50));
+    //    FillRect(hdc, &rc, hBrush);
+    //    DeleteObject(hBrush);
+    //    return 1;
+    //}
     switch (msg)
     {
     case WM_RBUTTONDOWN:
@@ -600,10 +616,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         switch (msg)
         {
         case WM_SIZE:
-            GetClientRect(hwnd, &g_webviewRect);
-            g_controller->put_Bounds(g_webviewRect);
-            SeachCaption(true);
-            NotifyEventResize();
+            //if (wParam == SIZE_RESTORED || wParam == SIZE_MAXIMIZED)
+            //{
+                GetClientRect(hwnd, &g_webviewRect);
+                g_controller->put_Bounds(g_webviewRect);
+                SeachCaption(true);
+                NotifyEventResize();
+            //}
             break;
         case WM_MBUTTONDOWN:
             g_compController->SendMouseInput(COREWEBVIEW2_MOUSE_EVENT_KIND_MIDDLE_BUTTON_DOWN, GetKeys(wParam), 0, GetPoint(hwnd, lParam));
