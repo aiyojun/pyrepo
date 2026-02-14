@@ -5,6 +5,8 @@
 #include <wrl.h>
 #include <stdio.h>
 #include <dcomp.h>
+#include <shobjidl.h>   // IFileOpenDialog
+//#include <shlobj.h>     // SHCreateItemFromParsingName
 //#include <shlobj.h>
 #include <vector>
 #include <string>
@@ -35,12 +37,12 @@ struct WebviewParameter
     int height = 680;
     int x = CW_USEDEFAULT;
     int y = CW_USEDEFAULT;
-    int client_x = 0;
-    int client_y = 0;
-    int client_width = 100;
-    int client_height = 32;
+    int caption_x = 0;
+    int caption_y = 0;
+    int caption_width = 100;
+    int caption_height = 32;
     int memory_size = 0;
-    std::wstring title = L"Webview2 Viewer";
+    std::wstring title = L"WebView2Window";
     std::wstring icon;
     std::wstring url;
     std::wstring preload_script;
@@ -78,7 +80,7 @@ void set_memory(int length) { g_params.memory_size = length; }
 
 void set_listener(MessageListener listener) { g_listener = listener; }
 
-void set_client(int x, int y, int width, int height) { g_params.client_x = x; g_params.client_y = y; g_params.client_width = width; g_params.client_height = height; }
+void set_client(int x, int y, int width, int height) { g_params.caption_x = x; g_params.caption_y = y; g_params.caption_width = width; g_params.caption_height = height; }
 
 void set_navigation(char* url) { g_params.url = std::wstring(convert_wstring(url)); }
 
@@ -130,6 +132,64 @@ void evaluate(char* script, MessageListener callback)
                     callback(x.c_str());
                 return S_OK;
             }).Get());
+}
+
+void open_file_dialog(void* hwndOwner, char *title, int flags, char* buf, size_t len, char *defaultPath)
+{
+    IFileOpenDialog* pfd = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pfd)))) return;
+    DWORD dwOptions;
+    pfd->GetOptions(&dwOptions);
+    dwOptions |= FOS_FORCEFILESYSTEM;
+    if (flags & 0b0001) dwOptions |= FOS_ALLOWMULTISELECT;
+    if (flags & 0b0010 >> 1) dwOptions |= FOS_PICKFOLDERS; else dwOptions |= FOS_FILEMUSTEXIST;    
+    pfd->SetOptions(dwOptions);
+    pfd->SetTitle(title ? convert_wstring(title).c_str() : L"选择文件");
+
+    if (defaultPath) {
+        IShellItem* psiFolder = nullptr;
+        if (SUCCEEDED(SHCreateItemFromParsingName(convert_wstring(defaultPath).c_str(), nullptr, IID_PPV_ARGS(&psiFolder)))) {
+            pfd->SetFolder(psiFolder);
+            psiFolder->Release();
+        }
+    }
+
+    std::vector<std::wstring> results;
+    if (SUCCEEDED(pfd->Show((HWND)hwndOwner))) 
+    {
+        IShellItemArray* psia = nullptr;
+        if (SUCCEEDED(pfd->GetResults(&psia)))
+        {
+            DWORD count = 0;
+            psia->GetCount(&count);
+            for (DWORD i = 0; i < count; ++i) 
+            {
+                IShellItem* psi = nullptr;
+                if (SUCCEEDED(psia->GetItemAt(i, &psi))) 
+                {
+                    PWSTR pszPath = nullptr;
+                    if (SUCCEEDED(psi->GetDisplayName(SIGDN_FILESYSPATH, &pszPath)))
+                    {
+                        results.push_back(pszPath);
+                        CoTaskMemFree(pszPath);
+                    }
+                    psi->Release();
+                }
+            }
+            psia->Release();
+        }
+    }
+    pfd->Release();
+
+    std::string content;
+    int length = results.size();
+    for (int i = 0; i < length; i++)
+    {
+        content += wstring_convert(results[i]);
+        if (i != length - 1)
+            content += ";";
+    }
+    memcpy(buf, content.data(), min(content.length(), len));
 }
 
 static void Trap(long status)
@@ -230,10 +290,10 @@ static void AttachConsoleForDebug()
 
 bool IsCaptionArea(POINT pt)
 {
-    return pt.x > g_params.client_x
-        && pt.x < g_params.client_x + g_params.client_width
-        && pt.y > g_params.client_y
-        && pt.y < g_params.client_y + g_params.client_height;
+    return pt.x > g_params.caption_x
+        && pt.x < g_params.caption_x + g_params.caption_width
+        && pt.y > g_params.caption_y
+        && pt.y < g_params.caption_y + g_params.caption_height;
 }
 
 void NotifyEventResize()
@@ -278,11 +338,11 @@ void SeachCaption(bool force = false)
 
                 if (!js.is_null())
                 {
-                    g_params.client_x = (int)(js["x"].get<double>());
-                    g_params.client_y = (int)(js["y"].get<double>());
-                    g_params.client_width = (int)(js["width"].get<double>());
-                    g_params.client_height = (int)(js["height"].get<double>());
-                    //printf("- set client area : %d, %d, %d, %d\n", g_params.client_x, g_params.client_y, g_params.client_width, g_params.client_height);
+                    g_params.caption_x = (int)(js["x"].get<double>());
+                    g_params.caption_y = (int)(js["y"].get<double>());
+                    g_params.caption_width = (int)(js["width"].get<double>());
+                    g_params.caption_height = (int)(js["height"].get<double>());
+                    //printf("- set client area : %d, %d, %d, %d\n", g_params.caption_x, g_params.caption_y, g_params.caption_width, g_params.caption_height);
                     executed = true;
                 }
                 return S_OK;
@@ -431,17 +491,17 @@ static void print_params()
     int height = 680;
     int x = CW_USEDEFAULT;
     int y = CW_USEDEFAULT;
-    int client_x = 0;
-    int client_y = 0;
-    int client_width = 100;
-    int client_height = 32;
+    int caption_x = 0;
+    int caption_y = 0;
+    int caption_width = 100;
+    int caption_height = 32;
     std::wstring title = L"Webview2 Viewer";
     std::wstring icon;
     std::wstring url;*/
 
     printf("params:\n- x : %d\n- y : %d\n- width : %d\n- height : %d\n", g_params.x, g_params.y, g_params.width, g_params.height);
     wprintf(L"- title : %s\n- icon : %s\n- url : %s\n", g_params.title.c_str(), g_params.icon.c_str(), g_params.url.c_str());
-    printf("client:\n- x : %d\n- y : %d\n- width : %d\n- height : %d\n", g_params.client_x, g_params.client_y, g_params.client_width, g_params.client_height);
+    printf("client:\n- x : %d\n- y : %d\n- width : %d\n- height : %d\n", g_params.caption_x, g_params.caption_y, g_params.caption_width, g_params.caption_height);
 }
 
 void destroy()
