@@ -10,7 +10,7 @@ with open("README.md", 'r', encoding='utf-8') as fp:
 
 setuptools.setup(
     name="webview2",
-    version="0.0.2",
+    version="0.0.3",
     author="aiyojun",
     author_email="aiyojun@gmail.com",
     description="Build immersive applications supported by WebView2 on Windows Operation Systems",

@@ -1,6 +1,6 @@
 from .bridge import Window, webview2_api
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 
 __all__ = ["Window", "webview2_api"]
 

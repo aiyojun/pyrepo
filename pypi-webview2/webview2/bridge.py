@@ -14,7 +14,7 @@ import voxe
 import win32con
 import win32gui
 
-from .core import dll, listener
+from .base import dll, listener
 
 _dir_ = os.path.dirname(__file__)
 
