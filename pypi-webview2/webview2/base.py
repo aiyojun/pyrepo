@@ -1,8 +1,11 @@
 import ctypes
 import os
 
-os.add_dll_directory(os.path.dirname(__file__))
-dll = ctypes.CDLL("WebView2Window.dll")
+
+_dir_ = os.path.dirname(__file__)
+os.add_dll_directory(_dir_)
+dll_path = os.path.join(_dir_, "WebView2Window.dll")
+dll = ctypes.CDLL(dll_path)
 
 listener = ctypes.CFUNCTYPE(None, ctypes.c_char_p)
 set_title = dll.set_title
