@@ -46,6 +46,7 @@ struct WebviewParameter
     std::wstring icon;
     std::wstring url;
     std::wstring preload_script;
+
 };
 
 WebviewParameter g_params;
@@ -753,7 +754,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             UpdateCursor();
             break;
         case WM_MOUSEWHEEL:
-            g_compController->SendMouseInput(COREWEBVIEW2_MOUSE_EVENT_KIND_WHEEL, GetKeys(wParam), GET_WHEEL_DELTA_WPARAM(wParam), GetPoint(hwnd, lParam));
+            g_compController->SendMouseInput(COREWEBVIEW2_MOUSE_EVENT_KIND_WHEEL, GetKeys(wParam), GET_WHEEL_DELTA_WPARAM(wParam), GetPoint(hwnd, lParam, true));
             UpdateCursor();
             break;
         case WM_DPICHANGED:
